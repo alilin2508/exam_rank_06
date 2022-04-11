@@ -7,11 +7,12 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+
 fd_set fds, rfds, wfds;
 int client = 0, fd_max = 0;
 int idx[65536];
 char *msg[65536];
-char rbuf[1024], wbuf[100];
+char rbuf[1025], wbuf[100];
 
 int extract_message(char **buf, char **msg)
 {
@@ -70,12 +71,12 @@ void notify(int fd, char *str)
 {
   for (int i = 0; i <= fd_max; i++)
   {
-    if (FD_ISSET(i, &wfds) && i != fd)
+    if (FD_ISSET(i, &wfds) && fd != i)
       send(i, str, strlen(str), 0);
   }
 }
 
-void accept_client(int fd)
+void add_client(int fd)
 {
   fd_max = fd > fd_max ? fd : fd_max;
   idx[fd] = client++;
@@ -97,20 +98,22 @@ void remove_client(int fd)
 
 void deliver(int fd)
 {
-  char *s;
+  char *str;
 
-  while (extract_message(&msg[fd], &s))
+  while (extract_message(&msg[fd], &str))
   {
     sprintf(wbuf, "client %d: ", idx[fd]);
     notify(fd, wbuf);
-    notify(fd, s);
-    free(s);
-    s = NULL;
+    notify(fd, str);
+    free(str);
+    str = NULL;
   }
 }
 
+
 int main(int ac, char **av)
 {
+
   if (ac != 2)
   {
     write(2, "Wrong number of arguments\n", 26);
@@ -120,12 +123,15 @@ int main(int ac, char **av)
   FD_ZERO(&fds);
 
 	int sockfd;
+
 	// socket create and verification
 	sockfd = socket(AF_INET, SOCK_STREAM, 0);
 	if (sockfd == -1)
     fatal();
   FD_SET(sockfd, &fds);
+
   fd_max = sockfd;
+
 
   struct sockaddr_in servaddr;
 	bzero(&servaddr, sizeof(servaddr));
@@ -138,11 +144,12 @@ int main(int ac, char **av)
 	// Binding newly created socket to given IP and verification
 	if ((bind(sockfd, (const struct sockaddr *)&servaddr, sizeof(servaddr))) != 0)
     fatal();
-	if (listen(sockfd, SOMAXCONN) != 0)
+	if (listen(sockfd, 10) != 0)
     fatal();
-  while (42)
+
+  while(1)
   {
-    wfds = rfds = fds;
+    rfds = wfds = fds;
     if (select(fd_max + 1, &rfds, &wfds, NULL, NULL) < 0)
       fatal();
     for (int fd = 0; fd <= fd_max; fd++)
@@ -155,7 +162,7 @@ int main(int ac, char **av)
         int clients = accept(sockfd, (struct sockaddr *)&servaddr, &addrlen);
         if (clients >= 0)
         {
-          accept_client(clients);
+          add_client(clients);
           break;
         }
       }
@@ -167,11 +174,11 @@ int main(int ac, char **av)
           remove_client(fd);
           break;
         }
-        rbuf[readed] = '\0';
+        rbuf[readed]= '\0';
         msg[fd] = str_join(msg[fd], rbuf);
         deliver(fd);
       }
     }
   }
-	return (0);
+  return (0);
 }
